@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -27,14 +27,18 @@ func NewService(ctx context.Context, tokenPath string) (*drive.Service, error) {
 		return nil, fmt.Errorf("failed to read credentials: %w", err)
 	}
 
-	config, err := google.ConfigFromJSON(creds, drive.DriveMetadataReadonlyScope)
+	config, err := google.ConfigFromJSON(creds, drive.DriveFileScope)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to create config: %w", err)
 	}
 
 	client, err := getClient(ctx, config, tokenPath)
-	// TODO: handle error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get client: %w", err)
+	}
+
 	srv, err := drive.NewService(ctx, option.WithHTTPClient(client))
 
 	if err != nil {
@@ -42,6 +46,27 @@ func NewService(ctx context.Context, tokenPath string) (*drive.Service, error) {
 	}
 
 	return srv, nil
+
+}
+
+func UploadFile(srv *drive.Service, filePath string) (*drive.File, error) {
+	fileToUpload, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer fileToUpload.Close()
+
+	fileMetadata := &drive.File{
+		Name: filepath.Base(filePath),
+	}
+
+	file, err := srv.Files.Create(fileMetadata).Media(fileToUpload).Do()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	return file, nil
 
 }
 
@@ -71,35 +96,35 @@ func tokenFromFile(tokenPath string) (*oauth2.Token, error) {
 
 }
 
-func getTokenFromWeb(ctx context.Context, config *oauth2.Config) *oauth2.Token {
-	// auth url을 생성한다음에 보여준다. 그 다음에 fmt.Scan을 이용하여 입력받는다. 입력받은 값을 가지고 exchange를 호출한다.
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+// func getTokenFromWeb(ctx context.Context, config *oauth2.Config) *oauth2.Token {
+// 	// auth url을 생성한다음에 보여준다. 그 다음에 fmt.Scan을 이용하여 입력받는다. 입력받은 값을 가지고 exchange를 호출한다.
+// 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
 
-	fmt.Printf("Go to the following link in your browser:\n%v\n", authURL)
-	fmt.Print("Enter the authorization code: ")
+// 	fmt.Printf("Go to the following link in your browser:\n%v\n", authURL)
+// 	fmt.Print("Enter the authorization code: ")
 
-	var authCode string
+// 	var authCode string
 
-	if _, err := fmt.Scan(&authCode); err != nil {
-		log.Fatalf("Unable to read authorization code: %v", err)
-	}
+// 	if _, err := fmt.Scan(&authCode); err != nil {
+// 		log.Fatalf("Unable to read authorization code: %v", err)
+// 	}
 
-	token, err := config.Exchange(ctx, authCode)
-	if err != nil {
-		log.Fatalf("Unable to exchange authorization code: %v", err)
-	}
+// 	token, err := config.Exchange(ctx, authCode)
+// 	if err != nil {
+// 		log.Fatalf("Unable to exchange authorization code: %v", err)
+// 	}
 
-	return token
+// 	return token
 
-}
+// }
 
-func saveToken(tokenPath string, token *oauth2.Token) {
-	fmt.Printf("Saving credential file to: %s\n", tokenPath)
-	f, err := os.OpenFile(tokenPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		log.Fatalf("Unable to open token file: %v", err)
-	}
+// func saveToken(tokenPath string, token *oauth2.Token) {
+// 	fmt.Printf("Saving credential file to: %s\n", tokenPath)
+// 	f, err := os.OpenFile(tokenPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+// 	if err != nil {
+// 		log.Fatalf("Unable to open token file: %v", err)
+// 	}
 
-	defer f.Close()
-	json.NewEncoder(f).Encode(token)
-}
+// 	defer f.Close()
+// 	json.NewEncoder(f).Encode(token)
+// }
