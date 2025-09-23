@@ -1,0 +1,61 @@
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Binaries and build directories
+/bin/
+/build/
+/dist/
+/out/
+/tmp/
+
+# Project binary (when built at repo root)
+/drive-uploader
+
+# Go coverage and profiles
+coverage.*
+*.cover
+*.coverprofile
+*.cov
+*.prof
+profile.out
+
+# Modules (vendor, if ever created locally)
+/vendor/
+
+# macOS
+.DS_Store
+
+# Editors/IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs
+*.log
+
+# Environment and secrets
+.env
+.env.*
+
+# OAuth/Google API credentials & tokens (do NOT commit secrets)
+credentials.json
+credentials_*.json
+client_secret.json
+service-account.json
+service_account.json
+token.json
+token_*.json
+
+# OAuth cache dirs
+.oauth2/
+.gcloud/
+
+# Local-only config/data
+*.local.json
