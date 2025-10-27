@@ -2,79 +2,133 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
+	"fmt"
 	"log"
-
-	"github.com/leejss/drive-uploader/internal/gdrive"
+	"os"
+	"path/filepath"
 )
 
-// 애플리케이션 설정을 위한 상수들
+var (
+	credentialPath string
+	tokenPath      string
+)
+
 const (
-	credentialsPath = "credentials.json"
-	tokenPath       = "token.json"
+	configDirName = ".drive-uploader"
 )
+
+func init() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal("Failed to get user home directory: ", err)
+	}
+
+	configDir := filepath.Join(homeDir, configDirName)
+	// Check stat first, then create if not exists
+	if _, err := os.Stat(configDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(configDir, 0700); err != nil {
+			log.Fatal("Failed to create config directory: ", err)
+		}
+		fmt.Printf("Config directory created: %s\n", configDir)
+	}
+
+	credentialPath = filepath.Join(configDir, "credential.json")
+	tokenPath = filepath.Join(configDir, "token.json")
+}
 
 func main() {
 
-	filePath := flag.String("file", "", "Path to the file to upload")
-	flag.Parse()
-
-	if *filePath == "" {
-		log.Println("Usage: go run ./cmd/drive-uploader -file <path-to-your-file>")
-		log.Fatal("Error: -file argument is required")
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: drive-uploader <command> <arguments>")
+		fmt.Println(("Available commands: upload, auth"))
+		os.Exit(1) // 비정상 종료
 	}
 
-	log.Printf("Attempting to upload file: %s", *filePath)
+	switch os.Args[1] {
+	case "upload":
+		return
+	case "auth":
+		handleAuth(os.Args[2:])
+	default:
+		fmt.Println("Invalid command")
+		return
+	}
 
-	ctx := context.Background()
+}
 
-	// Google Drive 서비스 생성 시도
-	srv, err := gdrive.NewService(ctx, credentialsPath, tokenPath)
-	if err != nil {
-		// 에러가 gdrive.ErrorTokenNotFound 종류인지 확인
-		if errors.Is(err, gdrive.ErrorTokenNotFound) {
-			log.Printf("Token not found, attempting to generate a new one...")
+func handleAuth(args []string) {
+	authCmd := flag.NewFlagSet("auth", flag.ExitOnError)
 
-			// 헬퍼 함수를 사용하여 토큰 발급 절차 진행
-			config, configErr := getConfig(credentialsPath)
-			if configErr != nil {
-				log.Fatalf("Fatal: Unable to load client secret file: %v", configErr)
-			}
+	authCmd.Parse(args)
+	if authCmd.NArg() == 0 {
+		fmt.Println("Usage: drive-uploader auth <action>")
+		fmt.Println("Available actions: list, login, logout")
+		os.Exit(1)
+	}
 
-			token, tokenErr := getTokenFromWeb(ctx, config)
-			if tokenErr != nil {
-				log.Fatalf("Fatal: Unable to get token from web: %v", tokenErr)
-			}
+	action := authCmd.Arg(0)
 
-			if saveErr := saveToken(tokenPath, token); saveErr != nil {
-				log.Printf("Warning: Unable to cache oauth token: %v", saveErr)
-			}
+	switch action {
+	case "list":
+		fmt.Println("현재 인증 상태를 확인합니다...")
 
-			// 토큰 발급 후 서비스 생성 재시도
-			log.Println("Token acquired. Retrying to create drive service...")
-			srv, err = gdrive.NewService(ctx, credentialsPath, tokenPath)
-			if err != nil {
-				log.Fatalf("Fatal: Failed to create drive service even after getting token: %v", err)
-			}
-		} else {
-			// 토큰 문제가 아닌 다른 복구 불가능한 에러
-			log.Fatalf("Fatal: An unrecoverable error occurred: %v", err)
+		if _, err := os.Stat(tokenPath); os.IsNotExist(err) {
+			fmt.Println("\U0001f4e2 상태: 인증되지 않음")
+			fmt.Println("\u2139️ 조치: `drive-uploader auth login` 명령으로 인증을 진행하세요.")
+			return
 		}
+
+		fmt.Printf("\u2705 상태: 인증됨\n")
+		fmt.Printf("\U0001f4c1 토큰 파일 위치: %s\n", tokenPath)
+		return
+	case "login":
+		fmt.Println("새로운 Google 계정 인증을 시작합니다...")
+
+		if _, err := os.Stat(tokenPath); err == nil {
+			fmt.Print("이미 인증 정보가 있습니다. 덮어쓰시겠습니까? (y/N): ")
+			var confirm string
+			fmt.Scanln(&confirm)
+			if confirm != "y" && confirm != "Y" {
+				fmt.Println("인증을 취소했습니다.")
+				return
+			}
+		}
+
+		ctx := context.Background()
+		config, err := getConfig(credentialPath)
+		if err != nil {
+			log.Fatalf("인증 설정 오류:\n%v", err)
+		}
+
+		token, err := getTokenFromWeb(ctx, config)
+		if err != nil {
+			log.Fatalf("오류: 웹에서 토큰을 가져올 수 없습니다: %v", err)
+		}
+
+		if err := saveToken(tokenPath, token); err != nil {
+			log.Fatalf("오류: 토큰을 파일에 저장할 수 없습니다: %v", err)
+		}
+
+		fmt.Println("✅ 인증에 성공했으며 token.json 파일에 저장되었습니다.")
+		return
+	case "logout":
+		fmt.Println("인증 정보를 삭제합니다...")
+
+		if _, err := os.Stat(tokenPath); os.IsNotExist(err) {
+			fmt.Println("\u2139️ 이미 로그아웃 상태입니다.")
+			return
+		}
+
+		if err := os.Remove(tokenPath); err != nil {
+			log.Fatalf("\u274c 오류: 토큰 파일을 삭제할 수 없습니다: %v", err)
+		}
+
+		fmt.Println("\u2705 성공적으로 로그아웃되었습니다.")
+		return
+	default:
+		fmt.Println("Invalid action")
+		return
 	}
 
-	log.Println("Successfully created drive service.")
-
-	// 파일 업로드 함수 호출
-	log.Println("Starting file upload...")
-	uploadedFile, err := gdrive.UploadFile(srv, *filePath)
-	if err != nil {
-		log.Fatalf("Fatal: Failed to upload file: %v", err)
-	}
-
-	// 결과 로깅
-	log.Printf("File uploaded successfully!")
-	log.Printf("File Name: %s", uploadedFile.Name)
-	log.Printf("File ID: %s", uploadedFile.Id)
-	log.Printf("View online: %s", uploadedFile.WebViewLink)
 }
