@@ -47,6 +47,7 @@ func main() {
 
 	switch os.Args[1] {
 	case "upload":
+		handleUpload(os.Args[2:])
 		return
 	case "auth":
 		handleAuth(os.Args[2:])
@@ -67,7 +68,7 @@ func handleAuth(args []string) {
 		os.Exit(1)
 	}
 
-	action := authCmd.Arg(0)
+	action := authCmd.Arg(0) // auth 다음 첫번째로 오는 인자를 저장.
 
 	switch action {
 	case "list":
@@ -125,6 +126,41 @@ func handleAuth(args []string) {
 		}
 
 		fmt.Println("\u2705 성공적으로 로그아웃되었습니다.")
+		return
+	default:
+		fmt.Println("Invalid action")
+		return
+	}
+
+}
+
+func handleUpload(args []string) {
+	uplaodCmd := flag.NewFlagSet("upload", flag.ExitOnError)
+	uplaodCmd.Parse(args)
+	action := uplaodCmd.Arg(0)
+
+	switch action {
+	case "file":
+		// drive-uploader upload file <filepath>
+
+		// arguments 의 개수 체크.
+		if uplaodCmd.NArg() < 2 {
+			fmt.Println("Usage: drive-uploader upload file <filepath>")
+			os.Exit(1)
+		}
+
+		filePath := uplaodCmd.Arg(1)
+
+		// 2. 인증 상태를 확인.
+		// 3. 서비스 생성.
+		// 4. 파일 업로드.
+		// 5. 결과 출력.
+
+		fmt.Println("Uploading file...", uplaodCmd.Arg(1))
+		// 경로가 올바른지 확인
+		return
+	case "folder":
+		fmt.Println("Uploading folder...")
 		return
 	default:
 		fmt.Println("Invalid action")
