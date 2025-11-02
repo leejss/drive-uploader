@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 
 	"golang.org/x/oauth2"
@@ -45,17 +46,43 @@ func getConfig(credentialsPath string) (*oauth2.Config, error) {
 }
 
 func getTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
+	// 로컬 서버 포트 설정
+	config.RedirectURL = "http://localhost:8090/auth/callback"
+
 	authURL := config.AuthCodeURL(stateToken, oauth2.AccessTypeOffline)
 	fmt.Println("Go to the following link in your browser and authorize the app:")
 	fmt.Printf("%v\n\n", authURL)
-	fmt.Print("Enter the authorization code: ")
+
+	// 채널로 authorization code 수신
+	codeChan := make(chan string)
+	errChan := make(chan error)
+
+	// 로컬 HTTP 서버 시작
+	http.HandleFunc("/auth/callback", func(w http.ResponseWriter, r *http.Request) {
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			errChan <- fmt.Errorf("no authorization code in URL")
+			http.Error(w, "No authorization code", http.StatusBadRequest)
+			return
+		}
+		codeChan <- code
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "✅ Authorization successful! You can close this window and return to the terminal.")
+	})
+
+	server := &http.Server{Addr: ":8090"}
+	go server.ListenAndServe()
+	defer server.Shutdown(ctx)
 
 	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		return nil, fmt.Errorf("unable to read authorization code: %w", err)
+	select {
+	case authCode = <-codeChan:
+	case err := <-errChan:
+		return nil, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 
-	// authCode를 주고 access token과 refresh token을 주는 함수
 	return config.Exchange(ctx, authCode)
 }
 

@@ -7,6 +7,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/leejss/drive-uploader/internal/gdrive"
 )
 
 var (
@@ -136,28 +139,41 @@ func handleAuth(args []string) {
 
 func handleUpload(args []string) {
 	uplaodCmd := flag.NewFlagSet("upload", flag.ExitOnError)
+
 	uplaodCmd.Parse(args)
 	action := uplaodCmd.Arg(0)
 
+	if _, err := os.Stat(tokenPath); os.IsNotExist(err) {
+		fmt.Println("\u2139️ 인증되지 않은 상태입니다.\n 조치: `drive-uploader auth login` 명령으로 인증을 진행하세요.")
+		os.Exit(1)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	srv, err := gdrive.NewService(ctx, credentialPath, tokenPath)
+
+	if err != nil {
+		log.Fatalf("오류: 서비스를 생성할 수 없습니다: %v", err)
+	}
+
 	switch action {
 	case "file":
-		// drive-uploader upload file <filepath>
-
-		// arguments 의 개수 체크.
 		if uplaodCmd.NArg() < 2 {
 			fmt.Println("Usage: drive-uploader upload file <filepath>")
 			os.Exit(1)
 		}
 
 		filePath := uplaodCmd.Arg(1)
+		uploaded, err := gdrive.UploadFile(srv, filePath)
 
-		// 2. 인증 상태를 확인.
-		// 3. 서비스 생성.
-		// 4. 파일 업로드.
-		// 5. 결과 출력.
+		if err != nil {
+			log.Fatalf("오류: 파일 업로드 중 오류 발생: %v", err)
+		}
+
+		fmt.Printf("\u2705 파일 업로드 성공: %s\n", uploaded.Id)
 
 		fmt.Println("Uploading file...", uplaodCmd.Arg(1))
-		// 경로가 올바른지 확인
 		return
 	case "folder":
 		fmt.Println("Uploading folder...")
