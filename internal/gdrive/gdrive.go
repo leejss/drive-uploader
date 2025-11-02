@@ -72,3 +72,7 @@ func UploadFile(srv *drive.Service, path string) (*drive.File, error) {
 
 	return uploadFile, nil
 }
+
+func UploadFolder(srv *drive.Service, path string) error {
+
+}
