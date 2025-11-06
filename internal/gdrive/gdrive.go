@@ -73,6 +73,65 @@ func UploadFile(srv *drive.Service, path string) (*drive.File, error) {
 	return uploadFile, nil
 }
 
-func UploadFolder(srv *drive.Service, path string) error {
+func UploadFolder(srv *drive.Service, rootPath string) error {
 
+	info, err := os.Stat(rootPath)
+
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("path does not exist: %s", rootPath)
+		}
+
+		return fmt.Errorf("failed to stat path: %w", err)
+	}
+
+	if !info.IsDir() {
+		return fmt.Errorf("path is not a directory: %s", rootPath)
+	}
+
+	folderName := filepath.Base(rootPath)
+	rootFolder, err := findOrCreateDriveFolder(srv, folderName, "")
+
+	if err != nil {
+		return fmt.Errorf("failed to create root folder: %w", err)
+	}
+
+	fmt.Printf("Root folder created: %s\n", rootFolder.Name)
+	return nil
+}
+
+func findOrCreateDriveFolder(srv *drive.Service, folderName string, parentId string) (*drive.File, error) {
+
+	q := fmt.Sprintf("name='%s' and mimeType='application/vnd.google-apps.folder'", folderName)
+
+	if parentId != "" {
+		q += fmt.Sprintf(" and '%s' in parents", parentId)
+	}
+
+	files, err := srv.Files.List().Q(q).Do()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list files: %w", err)
+	}
+
+	if len(files.Files) > 0 {
+		return files.Files[0], nil
+	}
+
+	folder := &drive.File{
+		Name:     folderName,
+		MimeType: "application/vnd.google-apps.folder",
+	}
+
+	if parentId != "" {
+		folder.Parents = []string{parentId}
+	}
+
+	createdFolder, err := srv.Files.Create(folder).Do()
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create folder: %w", err)
+	}
+
+	return createdFolder, nil
 }

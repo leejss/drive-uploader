@@ -176,7 +176,18 @@ func handleUpload(args []string) {
 		fmt.Println("Uploading file...", uplaodCmd.Arg(1))
 		return
 	case "folder":
-		fmt.Println("Uploading folder...")
+		if uplaodCmd.NArg() < 2 {
+			fmt.Println("Usage: drive-uploader upload folder <folderpath>")
+			os.Exit(1)
+		}
+		folderPath := uplaodCmd.Arg(1)
+		fmt.Println("Uploading folder...", folderPath)
+
+		if err := gdrive.UploadFolder(srv, folderPath); err != nil {
+			log.Fatalf("오류: 폴더 업로드 중 오류 발생: %v", err)
+		}
+
+		fmt.Println("✅ 폴더 업로드 성공")
 		return
 	default:
 		fmt.Println("Invalid action")
