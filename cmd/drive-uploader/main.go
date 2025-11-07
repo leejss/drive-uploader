@@ -165,7 +165,7 @@ func handleUpload(args []string) {
 		}
 
 		filePath := uplaodCmd.Arg(1)
-		uploaded, err := gdrive.UploadFile(srv, filePath)
+		uploaded, err := gdrive.UploadFile(srv, filePath, "")
 
 		if err != nil {
 			log.Fatalf("오류: 파일 업로드 중 오류 발생: %v", err)

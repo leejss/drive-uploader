@@ -48,7 +48,7 @@ func NewService(ctx context.Context, credentialsPath string, tokenPath string) (
 
 }
 
-func UploadFile(srv *drive.Service, path string) (*drive.File, error) {
+func UploadFile(srv *drive.Service, path string, parentId string) (*drive.File, error) {
 	f, err := os.Open(path)
 
 	if err != nil {
@@ -60,8 +60,11 @@ func UploadFile(srv *drive.Service, path string) (*drive.File, error) {
 	// File 구조체 포인터를 생성
 	metadata := &drive.File{
 		Name: filepath.Base(path),
-		// 부모 폴더 지정 가능
-		// MimeType 지정 가능
+	}
+
+	// parentId가 제공된 경우 부모 폴더 설정
+	if parentId != "" {
+		metadata.Parents = []string{parentId}
 	}
 
 	uploadFile, err := srv.Files.Create(metadata).Media(f).Do()
@@ -96,7 +99,60 @@ func UploadFolder(srv *drive.Service, rootPath string) error {
 		return fmt.Errorf("failed to create root folder: %w", err)
 	}
 
-	fmt.Printf("Root folder created: %s\n", rootFolder.Name)
+	fmt.Printf("Root folder created: %s (ID: %s)\n", rootFolder.Name, rootFolder.Id)
+
+	// 폴더 경로와 Drive 폴더 ID를 매핑하는 맵
+	folderMap := make(map[string]string)
+	folderMap[rootPath] = rootFolder.Id
+
+	// rooPath -> rootFolder.Id
+
+	// filepath.Walk를 사용하여 디렉토리 순회
+	err = filepath.Walk(rootPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("failed to access path %s: %w", path, err)
+		}
+
+		// 루트 경로는 이미 처리했으므로 스킵
+		if path == rootPath {
+			return nil
+		}
+
+		// 부모 디렉토리 경로 가져오기
+		parentPath := filepath.Dir(path)
+		parentId, exists := folderMap[parentPath] // check if parentId exists
+
+		if !exists {
+			return fmt.Errorf("parent folder not found for path: %s", path)
+		}
+
+		if info.IsDir() {
+			// 디렉토리인 경우: Drive에 폴더 생성
+			folder, err := findOrCreateDriveFolder(srv, info.Name(), parentId)
+			if err != nil {
+				return fmt.Errorf("failed to create folder %s: %w", info.Name(), err)
+			}
+
+			// 폴더 맵에 추가
+			folderMap[path] = folder.Id
+			fmt.Printf("Folder created: %s (ID: %s)\n", info.Name(), folder.Id)
+		} else {
+			// 파일인 경우: 업로드
+			uploadedFile, err := UploadFile(srv, path, parentId)
+			if err != nil {
+				return fmt.Errorf("failed to upload file %s: %w", info.Name(), err)
+			}
+
+			fmt.Printf("File uploaded: %s (ID: %s)\n", uploadedFile.Name, uploadedFile.Id)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to upload folder: %w", err)
+	}
+
 	return nil
 }
 
